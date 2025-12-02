@@ -1,114 +1,128 @@
 'use strict';
 
-// Include Gulp & Tools We'll Use
-var gulp = require('gulp');
-var $ = require('gulp-load-plugins')();
-var del = require('del');
-var runSequence = require('run-sequence');
-var pagespeed = require('psi');
-var app = require('./server');
-var vinylfs = require('vinyl-fs');
+const gulp = require('gulp');
+const $ = require('gulp-load-plugins')();
+const del = require('del');
+const pagespeed = require('psi');
+const app = require('./server');
+const vinylfs = require('vinyl-fs');
 
-var AUTOPREFIXER_BROWSERS = [
-	'ie >= 10',
-	'ie_mob >= 10',
-	'ff >= 30',
-	'chrome >= 34',
-	'safari >= 7',
-	'opera >= 23',
-	'ios >= 7',
-	'android >= 4.4',
-	'bb >= 10'
+const AUTOPREFIXER_BROWSERS = [
+  'ie >= 10',
+  'ie_mob >= 10',
+  'ff >= 30',
+  'chrome >= 34',
+  'safari >= 7',
+  'opera >= 23',
+  'ios >= 7',
+  'android >= 4.4',
+  'bb >= 10'
 ];
 
+// ----------------------
+// Gulp 4: Tasks
+// ----------------------
+
 // Lint JavaScript
-gulp.task('jshint', function () {
-	return gulp.src('site-assets/*.js')
-		.pipe($.jshint())
-		.pipe($.jshint.reporter('jshint-stylish'));
-});
+function jshint() {
+  return gulp.src('site-assets/*.js')
+    .pipe($.jshint())
+    .pipe($.jshint.reporter('jshint-stylish'));
+}
 
 // Optimize Images
-gulp.task('images', function () {
-	return gulp.src('site-assets/*.{png,jpg,svg}')
-		.pipe($.cache($.imagemin({
-			progressive: true,
-			interlaced: true
-		})))
-		.pipe(gulp.dest('dist/site-assets'))
-		.pipe($.size({title: 'images'}));
-});
+function images() {
+  return gulp.src('site-assets/*.{png,jpg,svg}')
+    .pipe($.cache($.imagemin({
+      progressive: true,
+      interlaced: true
+    })))
+    .pipe(gulp.dest('dist/site-assets'))
+    .pipe($.size({ title: 'images' }));
+}
 
-// Copy All Files At The Root Level (app)
-gulp.task('copy', function () {
-	return vinylfs.src([
-		'examples/**',
-		'bower_components/**',
-		'learn.json',
-		'CNAME',
-		'.nojekyll',
-		'site-assets/favicon.ico'
-	], {
-		dots: true,
-		base: './',
-		followSymlinks: false,
-	})
-	.pipe(vinylfs.dest('dist'))
-	.pipe($.size({title: 'copy'}));
-});
+// Copy root-level files
+function copy() {
+  return vinylfs.src([
+    'examples/**',
+    'bower_components/**',
+    'learn.json',
+    'CNAME',
+    '.nojekyll',
+    'site-assets/favicon.ico'
+  ], {
+    dots: true,
+    base: './',
+    followSymlinks: false
+  })
+    .pipe(vinylfs.dest('dist'))
+    .pipe($.size({ title: 'copy' }));
+}
 
-// Compile and Automatically Prefix Stylesheets
-gulp.task('styles', function () {
-	// For best performance, don't add Sass partials to `gulp.src`
-	return gulp.src([
-		'site-assets/*.css'
-	])
-	.pipe($.autoprefixer(AUTOPREFIXER_BROWSERS))
-	.pipe(gulp.dest('dist/site-assets'))
-	.pipe($.size({title: 'styles'}))
-	.pipe(gulp.dest('.tmp/site-assets'));
-});
+// Compile and prefix stylesheets
+function styles() {
+  return gulp.src(['site-assets/*.css'])
+    .pipe($.autoprefixer(AUTOPREFIXER_BROWSERS))
+    .pipe(gulp.dest('dist/site-assets'))
+    .pipe($.size({ title: 'styles' }))
+    .pipe(gulp.dest('.tmp/site-assets'));
+}
 
-// Scan Your HTML For Assets & Optimize Them
-gulp.task('html', function () {
-	var assets = $.useref.assets({searchPath: '{.tmp,.}'});
+// Process HTML, optimize assets
+function html() {
+  const assets = $.useref.assets({ searchPath: '{.tmp,.}' });
 
-	return gulp.src('index.html')
-		.pipe(assets)
-		.pipe(assets.restore())
-		.pipe($.useref())
-		// Output Files
-		.pipe(gulp.dest('dist'))
-		// Running vulcanize over the written output
-		// because it requires access to the written
-		// CSS and JS.
-		.pipe($.vulcanize({ dest: 'dist', strip: true }))
-		.pipe($.size({title: 'html'}));
-});
+  return gulp.src('index.html')
+    .pipe(assets)
+    .pipe(assets.restore())
+    .pipe($.useref())
+    .pipe(gulp.dest('dist'))
+    .pipe($.vulcanize({ dest: 'dist', strip: true }))
+    .pipe($.size({ title: 'html' }));
+}
 
-// Clean Output Directory
-gulp.task('clean', del.bind(null, ['.tmp', 'dist']));
+// Clean dist directories
+function clean() {
+  return del(['.tmp', 'dist']);
+}
 
-// Build Production Files, the Default Task
-gulp.task('default', ['clean'], function (cb) {
-	runSequence(['styles', 'copy'], ['jshint', 'html', 'images'], cb);
-});
+// Serve on port 8080
+function serve(cb) {
+  app.listen(8080, cb);
+}
 
-// Run PageSpeed Insights
-// Update `url` below to the public URL for your site
-gulp.task('pagespeed', pagespeed.bind(null, {
-	// By default, we use the PageSpeed Insights
-	// free (no API key) tier. You can use a Google
-	// Developer API key if you have one. See
-	// http://goo.gl/RkN0vE for info key: 'YOUR_API_KEY'
-	url: 'https://todomvc.com',
-	strategy: 'mobile'
-}));
+// Test server on port 8000
+function testServer(cb) {
+  app.listen(8000, cb);
+}
 
-gulp.task('serve', function (cb) {
-	app.listen(8080, cb);
-});
+// Pagespeed
+function psiTask() {
+  return pagespeed('https://todomvc.com', {
+    strategy: 'mobile'
+  });
+}
 
-gulp.task('test-server', function (cb) {
-	app.listen(8000, cb);
-});
+// ----------------------
+// Gulp 4: Build Pipeline
+// ----------------------
+
+const build = gulp.series(
+  clean,
+  gulp.parallel(styles, copy),
+  gulp.parallel(jshint, html, images)
+);
+
+// Set default task
+exports.default = build;
+
+exports.clean = clean;
+exports.styles = styles;
+exports.copy = copy;
+exports.jshint = jshint;
+exports.html = html;
+exports.images = images;
+
+exports.serve = serve;
+exports['test-server'] = testServer;
+exports.pagespeed = psiTask;
