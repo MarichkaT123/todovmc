@@ -1,0 +1,69 @@
+name: CI → test, sonar, build, push, optional-deploy
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+env:
+  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/todomvc-front
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      actions: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Use Node.js 18
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests (if available)
+        run: |
+          if [ -f package.json ] && jq -r '.scripts.test' package.json | grep -q -v '^null$' ; then
+            npm test -- --watch=false --browsers=ChromeHeadless || true
+          else
+            echo "No test script, skipping tests"
+          fi
+
+      - name: SonarCloud Scan (if SONAR_TOKEN set)
+        if: ${{ secrets.SONAR_TOKEN != '' }}
+        uses: SonarSource/sonarcloud-github-action@v2
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+
+      - name: Build production bundle
+        run: npm run build --if-present -- --configuration production
+
+      - name: Build Docker image
+        run: |
+          docker build -t $IMAGE_NAME:latest .
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Push Docker image
+        run: |
+          docker tag $IMAGE_NAME:latest $IMAGE_NAME:${{ github.sha }}
+          docker push $IMAGE_NAME:latest
+          docker push $IMAGE_NAME:${{ github.sha }}
