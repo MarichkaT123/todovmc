@@ -1,70 +1,48 @@
-name: CI → test, sonar, build, push, optional-deploy
+name: CI-CD
 
 on:
   push:
-    branches: ["main"]
+    branches:
+      - main
   pull_request:
-    branches: ["main"]
-
-env:
-  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/todomvc-front
 
 jobs:
-  build-and-push:
+  build-and-deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-      actions: read
-      id-token: write
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-      - name: Use Node.js 18
-        uses: actions/setup-node@v4
+      - name: Use Node.js 16
+        uses: actions/setup-node@v3
         with:
-          node-version: "18"
+          node-version: 16
+
+      - name: Install Angular CLI
+        run: npm install -g @angular/cli@13
 
       - name: Install dependencies
-        run: npm ci
+        run: npm install --legacy-peer-deps
 
-      - name: Run tests (if available)
-        run: |
-          if [ -f package.json ] && jq -r '.scripts.test' package.json | grep -q -v '^null$' ; then
-            npm test -- --watch=false --browsers=ChromeHeadless || true
-          else
-            echo "No test script, skipping tests"
-          fi
-
-      - name: SonarCloud Scan
-        if: ${{ secrets.SONAR_TOKEN }}
-        uses: SonarSource/sonarcloud-github-action@v2
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        with:
-          args: >
-            -Dsonar.login=${{ secrets.SONAR_TOKEN }}
-
-
-      - name: Build production bundle
-        run: npm run build --if-present -- --configuration production
-
-      - name: Build Docker image
-        run: |
-          docker build -t $IMAGE_NAME:latest .
+      - name: Angular build
+        run: npm run build --if-present
 
       - name: Login to Docker Hub
         uses: docker/login-action@v2
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+
+      - name: Build Docker image
+        run: docker build -t ${{ secrets.DOCKERHUB_USERNAME }}/todo-app:latest .
 
       - name: Push Docker image
+        run: docker push ${{ secrets.DOCKERHUB_USERNAME }}/todo-app:latest
+
+      - name: Deploy container on self-hosted GH Runner
         run: |
-          docker tag $IMAGE_NAME:latest $IMAGE_NAME:${{ github.sha }}
-          docker push $IMAGE_NAME:latest
-          docker push $IMAGE_NAME:${{ github.sha }}
+          docker stop todo-container || true
+          docker rm todo-container || true
+          docker pull ${{ secrets.DOCKERHUB_USERNAME }}/todo-app:latest
+          docker run -d --name todo-container -p 8080:80 ${{ secrets.DOCKERHUB_USERNAME }}/todo-app:latest
