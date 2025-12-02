@@ -40,14 +40,15 @@ jobs:
             echo "No test script, skipping tests"
           fi
 
-      - name: SonarCloud Scan (if SONAR_TOKEN set)
-        if: ${{ secrets.SONAR_TOKEN != '' }}
+      - name: SonarCloud Scan
+        if: ${{ secrets.SONAR_TOKEN }}
         uses: SonarSource/sonarcloud-github-action@v2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
           args: >
             -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+
 
       - name: Build production bundle
         run: npm run build --if-present -- --configuration production
